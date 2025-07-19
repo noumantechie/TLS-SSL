@@ -2,7 +2,7 @@
 
 This guide demonstrates how to create a self-signed Root Certificate Authority (CA) and use it to sign TLS/SSL certificates for Nginx. Ideal for development environments and internal infrastructure.
 
-## Understanding TLS/SSL Basics
+## Understanding TLS/SSL Basicsse
 
 ### 🔐 What is TLS/SSL?
 
@@ -26,17 +26,27 @@ This guide demonstrates how to create a self-signed Root Certificate Authority (
 * Windows machine for testing
 * Firewall access to ports 80/443
 
+## Self-Signed Certificate
+
+A self-signed certificate is a certificate that is **signed by the same entity whose identity it certifies**.
+
+> If I generate a **public key** and a **private key**, and then **sign the public key using my own private key**, I create a **self-signed certificate**. In other words, **I am issuing a certificate to myself**, saying:
+>
+> “I trust myself, and I vouch for my own identity.”
+
 ## Step-by-Step Setup
 
 ### 1. Create Root Certificate Authority
 
 ```bash
 # Generate Root CA private key and certificate
+# This creates a new RSA private key and uses it to generate a self-signed certificate valid for 10 years
 openssl req -x509 -sha256 -days 3650 -nodes -newkey rsa:2048 \
   -subj "/C=US/ST=California/L=San Francisco/O=ExampleOrg/OU=IT Department/CN=RootCA.devopsmadeeasy.in" \
   -keyout rootCA.key -out rootCA.crt
 
 # Install Root CA in system trust store
+# Copy the certificate to the trust store and update the system CA list
 sudo cp rootCA.crt /etc/pki/ca-trust/source/anchors/
 sudo update-ca-trust extract
 ```
@@ -45,6 +55,7 @@ sudo update-ca-trust extract
 
 ```bash
 # Create CSR configuration file
+# This file defines the subject details and SANs for the server certificate
 cat > csr.conf <<'EOF'
 [ req ]
 default_bits = 2048
@@ -79,12 +90,15 @@ subjectAltName=@alt_names
 EOF
 
 # Generate private key
+# This is the private key for your Nginx server
 openssl genrsa -out server.key 2048
 
 # Create Certificate Signing Request (CSR)
+# This generates a request file using the server key and config
 openssl req -new -key server.key -out server.csr -config csr.conf
 
 # Sign certificate with Root CA
+# Use your Root CA to sign the CSR and create the server certificate
 openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
   -CAcreateserial -out server.crt -days 3650 \
   -extensions v3_ext -extfile csr.conf
@@ -94,18 +108,22 @@ openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
 
 ```bash
 # Install Nginx
+# Install the web server if it's not already present
 sudo yum install -y nginx
 
 # Create certificate directory
+# Create a directory to securely store private keys
 sudo mkdir -p /etc/pki/nginx/private
 
 # Install certificates
+# Copy the generated certificates into Nginx directories and set correct permissions
 sudo cp server.crt /etc/pki/nginx/
 sudo cp server.key /etc/pki/nginx/private/
 sudo chmod 600 /etc/pki/nginx/private/server.key
 sudo chown nginx:nginx /etc/pki/nginx/private/server.key
 
 # Create Nginx SSL configuration
+# Define HTTPS server block to use TLS/SSL certificates
 sudo tee /etc/nginx/conf.d/ssl.conf > /dev/null <<'EOF'
 server {
     listen 443 ssl http2;
@@ -140,22 +158,25 @@ server {
 EOF
 
 # Test configuration and restart Nginx
+# Ensure syntax is correct and reload server
 sudo nginx -t
 sudo systemctl restart nginx
 
 # Install and enable firewalld
+# Make sure firewall service is running and enabled
 yum install firewalld -y
 systemctl enable --now firewalld
 systemctl status firewalld
 
 # Configure firewall
+# Allow HTTP and HTTPS traffic through the firewall
 sudo firewall-cmd --permanent --add-service={http,https}
 sudo firewall-cmd --reload
 ```
 
 ### 4. Windows Client Configuration
 
-**Edit hosts file (`C:\Windows\System32\drivers\etc\hosts`)**:
+**Edit hosts file (**\`\`**)**:
 
 ```
 68.183.142.158 mynginx.com www.mynginx.com test.mynginx.com
@@ -179,23 +200,34 @@ ipconfig /flushdns
 
 ```bash
 # Verify certificate chain
+# Checks if server.crt is properly signed by the Root CA
 openssl verify -CAfile rootCA.crt server.crt
 
 # Check SAN configuration
+# Display the certificate fields and filter Subject Alternative Names
 openssl x509 -in server.crt -text -noout | grep "X509v3"
 
-# Test local connection
+# Test local HTTPS connection using curl
 curl -vk --resolve mynginx.com:443:127.0.0.1 https://mynginx.com
+
+# Validate SSL handshake and certificate verification using openssl
+openssl s_client -connect localhost:443 -servername mynginx.com | grep "Verify"
+```
+
+# Test local connection
+
+curl -vk --resolve mynginx.com:443:127.0.0.1 [https://mynginx.com](https://mynginx.com)
+openssl s\_client -connect localhost:443 -servername mynginx.com | grep "Verify"
+
 ```
 
 ### Client-Side Verification
 
-* Access in browser: [https://mynginx.com](https://mynginx.com)
-* Check certificate details:
-
-  * Should show "Issued by: RootCA.devopsmadeeasy.in"
-  * Padlock icon should indicate secure connection
-  * Certificate should show all configured SANs
+- Access in browser: [https://mynginx.com](https://mynginx.com)
+- Check certificate details:
+  - Should show "Issued by: RootCA.devopsmadeeasy.in"
+  - Padlock icon should indicate secure connection
+  - Certificate should show all configured SANs
 
 ## Troubleshooting
 
@@ -209,11 +241,13 @@ curl -vk --resolve mynginx.com:443:127.0.0.1 https://mynginx.com
 
 ## Security Best Practices
 
-* Use 4096-bit keys for production certificates
-* Set shorter validity periods (90 days max)
-* Revoke unused certificates immediately
-* Use OCSP stapling for certificate revocation checks
-* Separate root CA from issuing certificates
-* Store root CA private key offline
+- Use 4096-bit keys for production certificates
+- Set shorter validity periods (90 days max)
+- Revoke unused certificates immediately
+- Use OCSP stapling for certificate revocation checks
+- Separate root CA from issuing certificates
+- Store root CA private key offline
 
 > **Note**: Self-signed certificates are suitable for development and internal use only. Production environments should use certificates from trusted Certificate Authorities like Let's Encrypt or commercial providers.
+
+```
