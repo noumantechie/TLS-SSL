@@ -33,7 +33,7 @@ This guide demonstrates how to create a self-signed Root Certificate Authority (
 ```bash
 # Generate Root CA private key and certificate
 openssl req -x509 -sha256 -days 3650 -nodes -newkey rsa:2048 \
-  -subj "/C=IN/ST=KA/L=BLR/O=DME/OU=DevSecOps/CN=RootCA.devopsmadeeasy.in" \
+  -subj "/C=US/ST=California/L=San Francisco/O=ExampleOrg/OU=IT Department/CN=RootCA.devopsmadeeasy.in" \
   -keyout rootCA.key -out rootCA.crt
 
 # Install Root CA in system trust store
@@ -54,11 +54,11 @@ distinguished_name = dn
 req_extensions = req_ext
 
 [ dn ]
-C = IN
-ST = Karnataka
-L = Bangalore
-O = DME
-OU = DevSecOps
+C = US
+ST = California
+L = San Francisco
+O = ExampleOrg
+OU = IT Department
 CN = mynginx.com
 
 [ req_ext ]
