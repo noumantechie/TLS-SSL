@@ -41,19 +41,23 @@ In this case, there is no third-party Certificate Authority involved. Self-signe
 ### 1. Create Root Certificate Authority
 
 ```bash
-# Generate a Root CA private key and self-signed certificate
-# -x509: Output a self-signed certificate instead of a certificate request
-# -sha256: Use SHA-256 hashing algorithm
-# -days 3650: Valid for 10 years
-# -nodes: Do not encrypt the private key
-# -newkey rsa:2048: Generate a new 2048-bit RSA key pair
-# -subj: Provide certificate details (Distinguished Name)
-# -keyout: Output file for the private key
-# -out: Output file for the certificate
 openssl req -x509 -sha256 -days 3650 -nodes -newkey rsa:2048 \
-  -subj "/C=US/ST=California/L=San Francisco/O=ExampleOrg/OU=IT Department/CN=RootCA.devopsmadeeasy.in" \
-  -keyout rootCA.key -out rootCA.crt
+-subj "/C=US/ST=California/L=San Francisco/O=ExampleOrg/OU=IT Department/CN=RootCA.devopsmadeeasy.in" \
+-keyout rootCA.key -out rootCA.crt
+```
 
+#### 📘 Explanation:
+
+* `-x509`: Creates a self-signed certificate instead of generating a certificate signing request (CSR)
+* `-sha256`: Uses the SHA-256 hashing algorithm (more secure than older ones like SHA1)
+* `-days 3650`: Certificate is valid for 10 years (3650 days)
+* `-nodes`: Tells OpenSSL **not** to encrypt the private key (no passphrase)
+* `-newkey rsa:2048`: Generates a new 2048-bit RSA key pair
+* `-subj`: Provides the subject details (like country, state, org, common name etc.)
+* `-keyout`: File name to save the private key (output file)
+* `-out`: File name to save the self-signed certificate
+
+```bash
 # Copy the Root CA certificate to the trusted anchors directory
 sudo cp rootCA.crt /etc/pki/ca-trust/source/anchors/
 
@@ -64,8 +68,7 @@ sudo update-ca-trust extract
 ### 2. Generate Server Certificate
 
 ```bash
-# Create a configuration file for the Certificate Signing Request (CSR)
-# Includes SANs and extended usages
+# Create CSR config file (includes SANs and extensions)
 cat > csr.conf <<'EOF'
 [ req ]
 default_bits = 2048
@@ -99,14 +102,13 @@ extendedKeyUsage=serverAuth
 subjectAltName=@alt_names
 EOF
 
-# Generate the server's private key
+# Generate server private key
 openssl genrsa -out server.key 2048
 
-# Create the CSR using the private key and configuration file
+# Generate CSR using server key and config file
 openssl req -new -key server.key -out server.csr -config csr.conf
 
-# Use the Root CA to sign the CSR and generate the server certificate
-# -CAcreateserial: Create a serial number file if it doesn't exist
+# Sign CSR with Root CA to generate server certificate
 openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
   -CAcreateserial -out server.crt -days 3650 \
   -extensions v3_ext -extfile csr.conf
@@ -115,21 +117,21 @@ openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
 ### 3. Configure Nginx
 
 ```bash
-# Install Nginx using yum package manager
+# Install Nginx
 sudo yum install -y nginx
 
-# Create a directory to store the private key securely
+# Create secure directory for private key
 sudo mkdir -p /etc/pki/nginx/private
 
-# Move the generated certificate and private key to Nginx directories
+# Move server key and cert to proper Nginx locations
 sudo cp server.crt /etc/pki/nginx/
 sudo cp server.key /etc/pki/nginx/private/
 
-# Set permissions so only Nginx can read the private key
+# Set proper permissions for private key
 sudo chmod 600 /etc/pki/nginx/private/server.key
 sudo chown nginx:nginx /etc/pki/nginx/private/server.key
 
-# Create an SSL configuration file for Nginx
+# Create SSL config for Nginx
 sudo tee /etc/nginx/conf.d/ssl.conf > /dev/null <<'EOF'
 server {
     listen 443 ssl http2;
@@ -163,18 +165,18 @@ server {
 }
 EOF
 
-# Test the Nginx configuration for syntax errors
+# Check Nginx config
 sudo nginx -t
 
-# Restart Nginx to apply the new configuration
+# Restart Nginx
 sudo systemctl restart nginx
 
-# Install and start the firewalld service
+# Install and start firewall
 yum install firewalld -y
 systemctl enable --now firewalld
 systemctl status firewalld
 
-# Allow HTTP and HTTPS traffic through the firewall
+# Open HTTP and HTTPS ports
 sudo firewall-cmd --permanent --add-service={http,https}
 sudo firewall-cmd --reload
 ```
@@ -204,16 +206,16 @@ ipconfig /flushdns
 ### Server-Side Checks
 
 ```bash
-# Check if server certificate is trusted by the Root CA
+# Verify server certificate with Root CA
 openssl verify -CAfile rootCA.crt server.crt
 
-# View SAN and other fields in the certificate
+# View certificate extensions like SAN
 openssl x509 -in server.crt -text -noout | grep "X509v3"
 
-# Test HTTPS connection with local name resolution
+# Test HTTPS request locally
 curl -vk --resolve mynginx.com:443:127.0.0.1 https://mynginx.com
 
-# Inspect TLS handshake and certificate validation
+# Inspect TLS handshake
 openssl s_client -connect localhost:443 -servername mynginx.com | grep "Verify"
 ```
 
