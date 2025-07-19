@@ -143,6 +143,11 @@ EOF
 sudo nginx -t
 sudo systemctl restart nginx
 
+# Install and enable firewalld
+yum install firewalld -y
+systemctl enable --now firewalld
+systemctl status firewalld
+
 # Configure firewall
 sudo firewall-cmd --permanent --add-service={http,https}
 sudo firewall-cmd --reload
