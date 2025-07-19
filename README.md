@@ -1,39 +1,36 @@
-TLS/SSL Certificate Setup for Nginx using Self-Signed Root CA
+# TLS/SSL Certificate Setup for Nginx using Self-Signed Root CA
+
 This guide demonstrates how to create a self-signed Root Certificate Authority (CA) and use it to sign TLS/SSL certificates for Nginx. Ideal for development environments and internal infrastructure.
 
-Understanding TLS/SSL Basics
-🔐 What is TLS/SSL?
-Transport Layer Security (TLS) and its predecessor Secure Sockets Layer (SSL) are cryptographic protocols that provide secure communication over networks
+## Understanding TLS/SSL Basics
 
-Creates an encrypted channel between client (browser) and server (Nginx)
+### 🔐 What is TLS/SSL?
 
-Uses asymmetric encryption with public/private key pairs
+* Transport Layer Security (TLS) and its predecessor Secure Sockets Layer (SSL) are cryptographic protocols that provide secure communication over networks
+* Creates an encrypted channel between client (browser) and server (Nginx)
+* Uses asymmetric encryption with public/private key pairs
+* Verified through digital certificates signed by trusted authorities
 
-Verified through digital certificates signed by trusted authorities
+### 📜 Key Concepts
 
-📜 Key Concepts
-Root Certificate Authority (CA): Trusted entity that issues digital certificates
+* **Root Certificate Authority (CA)**: Trusted entity that issues digital certificates
+* **Certificate Signing Request (CSR)**: File containing server details for certificate generation
+* **SAN (Subject Alternative Name)**: Extends certificate validity to multiple domains/IPs
+* **Chain of Trust**: Root CA → Intermediate CA → Server Certificate
 
-Certificate Signing Request (CSR): File containing server details for certificate generation
+## Prerequisites
 
-SAN (Subject Alternative Name): Extends certificate validity to multiple domains/IPs
+* CentOS 7/8 server with root access
+* OpenSSL installed
+* Nginx web server
+* Windows machine for testing
+* Firewall access to ports 80/443
 
-Chain of Trust: Root CA → Intermediate CA → Server Certificate
+## Step-by-Step Setup
 
-Prerequisites
-CentOS 7/8 server with root access
+### 1. Create Root Certificate Authority
 
-OpenSSL installed
-
-Nginx web server
-
-Windows machine for testing
-
-Firewall access to ports 80/443
-
-Step-by-Step Setup
-1. Create Root Certificate Authority
-bash
+```bash
 # Generate Root CA private key and certificate
 openssl req -x509 -sha256 -days 3650 -nodes -newkey rsa:2048 \
   -subj "/C=IN/ST=KA/L=BLR/O=DME/OU=DevSecOps/CN=RootCA.devopsmadeeasy.in" \
@@ -42,8 +39,11 @@ openssl req -x509 -sha256 -days 3650 -nodes -newkey rsa:2048 \
 # Install Root CA in system trust store
 sudo cp rootCA.crt /etc/pki/ca-trust/source/anchors/
 sudo update-ca-trust extract
-2. Generate Server Certificate
-bash
+```
+
+### 2. Generate Server Certificate
+
+```bash
 # Create CSR configuration file
 cat > csr.conf <<'EOF'
 [ req ]
@@ -67,7 +67,7 @@ subjectAltName = @alt_names
 [ alt_names ]
 DNS.1 = mynginx.com
 DNS.2 = test.mynginx.com
-DNS.3 = www.mynginx.com 
+DNS.3 = www.mynginx.com
 IP.1 = 68.183.142.158
 
 [ v3_ext ]
@@ -88,8 +88,11 @@ openssl req -new -key server.key -out server.csr -config csr.conf
 openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
   -CAcreateserial -out server.crt -days 3650 \
   -extensions v3_ext -extfile csr.conf
-3. Configure Nginx
-bash
+```
+
+### 3. Configure Nginx
+
+```bash
 # Install Nginx
 sudo yum install -y nginx
 
@@ -108,21 +111,21 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name mynginx.com www.mynginx.com test.mynginx.com;
-    
+
     ssl_certificate /etc/pki/nginx/server.crt;
     ssl_certificate_key /etc/pki/nginx/private/server.key;
-    
+
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
     ssl_prefer_server_ciphers on;
-    
+
     location / {
         root /usr/share/nginx/html;
         index index.html;
     }
-    
+
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {
         root /usr/share/nginx/html;
@@ -143,26 +146,33 @@ sudo systemctl restart nginx
 # Configure firewall
 sudo firewall-cmd --permanent --add-service={http,https}
 sudo firewall-cmd --reload
-4. Windows Client Configuration
-Edit hosts file (C:\Windows\System32\drivers\etc\hosts):
+```
 
-text
+### 4. Windows Client Configuration
+
+**Edit hosts file (`C:\Windows\System32\drivers\etc\hosts`)**:
+
+```
 68.183.142.158 mynginx.com www.mynginx.com test.mynginx.com
-Import Root CA:
+```
 
-Copy rootCA.crt to Windows machine
+**Import Root CA**:
 
-Open certlm.msc (Local Machine Certificate Manager)
+* Copy `rootCA.crt` to Windows machine
+* Open `certlm.msc` (Local Machine Certificate Manager)
+* Import to "Trusted Root Certification Authorities"
 
-Import to "Trusted Root Certification Authorities"
+**Flush DNS cache**:
 
-Flush DNS cache:
-
-cmd
+```cmd
 ipconfig /flushdns
-Verification
-Server-Side Checks
-bash
+```
+
+## Verification
+
+### Server-Side Checks
+
+```bash
 # Verify certificate chain
 openssl verify -CAfile rootCA.crt server.crt
 
@@ -171,35 +181,34 @@ openssl x509 -in server.crt -text -noout | grep "X509v3"
 
 # Test local connection
 curl -vk --resolve mynginx.com:443:127.0.0.1 https://mynginx.com
-Client-Side Verification
-Access in browser: https://mynginx.com
+```
 
-Check certificate details:
+### Client-Side Verification
 
-Should show "Issued by: RootCA.devopsmadeeasy.in"
+* Access in browser: [https://mynginx.com](https://mynginx.com)
+* Check certificate details:
 
-Padlock icon should indicate secure connection
+  * Should show "Issued by: RootCA.devopsmadeeasy.in"
+  * Padlock icon should indicate secure connection
+  * Certificate should show all configured SANs
 
-Certificate should show all configured SANs
+## Troubleshooting
 
-Troubleshooting
-Symptom	Solution
-NET::ERR_CERT_AUTHORITY_INVALID	Re-import Root CA on Windows
-SSL_ERROR_BAD_CERT_DOMAIN	Verify SAN in certificate matches hosts file
-Nginx fails to start	Run sudo nginx -t to check config errors
-Connection refused	Check firewall: sudo firewall-cmd --list-all
-Certificate not trusted	Ensure Root CA is in both system and browser trust stores
-Security Best Practices
-Use 4096-bit keys for production certificates
+| Symptom                            | Solution                                                  |
+| ---------------------------------- | --------------------------------------------------------- |
+| NET::ERR\_CERT\_AUTHORITY\_INVALID | Re-import Root CA on Windows                              |
+| SSL\_ERROR\_BAD\_CERT\_DOMAIN      | Verify SAN in certificate matches hosts file              |
+| Nginx fails to start               | Run `sudo nginx -t` to check config errors                |
+| Connection refused                 | Check firewall: `sudo firewall-cmd --list-all`            |
+| Certificate not trusted            | Ensure Root CA is in both system and browser trust stores |
 
-Set shorter validity periods (90 days max)
+## Security Best Practices
 
-Revoke unused certificates immediately
+* Use 4096-bit keys for production certificates
+* Set shorter validity periods (90 days max)
+* Revoke unused certificates immediately
+* Use OCSP stapling for certificate revocation checks
+* Separate root CA from issuing certificates
+* Store root CA private key offline
 
-Use OCSP stapling for certificate revocation checks
-
-Separate root CA from issuing certificates
-
-Store root CA private key offline
-
-Note: Self-signed certificates are suitable for development and internal use only. Production environments should use certificates from trusted Certificate Authorities like Let's Encrypt or commercial providers.
+> **Note**: Self-signed certificates are suitable for development and internal use only. Production environments should use certificates from trusted Certificate Authorities like Let's Encrypt or commercial providers.
