@@ -219,17 +219,38 @@ openssl s_client -connect localhost:443 -servername mynginx.com | grep "Verify"
 curl -vk --resolve mynginx.com:443:127.0.0.1 [https://mynginx.com](https://mynginx.com)
 openssl s\_client -connect localhost:443 -servername mynginx.com | grep "Verify"
 
+````
+
+### 5. Client-Side Verification
+
+```bash
+# Add entries to hosts file (on Windows)
+# This ensures browser resolves domain to your Nginx server IP
+68.183.142.158 mynginx.com www.mynginx.com test.mynginx.com
+````
+
+```bash
+# Import Root CA Certificate on Windows
+# This allows the browser to trust the self-signed CA
+# - Copy rootCA.crt to Windows machine
+# - Open certlm.msc (Local Machine Certificate Manager)
+# - Import into "Trusted Root Certification Authorities"
 ```
 
-### Client-Side Verification
+```cmd
+# Flush DNS cache (Windows)
+ipconfig /flushdns
+```
 
-- Access in browser: [https://mynginx.com](https://mynginx.com)
-- Check certificate details:
-  - Should show "Issued by: RootCA.devopsmadeeasy.in"
-  - Padlock icon should indicate secure connection
-  - Certificate should show all configured SANs
+```text
+# Open in browser: https://mynginx.com
+# You should see:
+# - A secure padlock icon
+# - Certificate issued by: RootCA.devopsmadeeasy.in
+# - All configured Subject Alternative Names (SANs)
+```
 
-## Troubleshooting
+## 6. Troubleshooting
 
 | Symptom                            | Solution                                                  |
 | ---------------------------------- | --------------------------------------------------------- |
@@ -239,15 +260,16 @@ openssl s\_client -connect localhost:443 -servername mynginx.com | grep "Verify"
 | Connection refused                 | Check firewall: `sudo firewall-cmd --list-all`            |
 | Certificate not trusted            | Ensure Root CA is in both system and browser trust stores |
 
-## Security Best Practices
+## 7. Security Best Practices
 
-- Use 4096-bit keys for production certificates
-- Set shorter validity periods (90 days max)
-- Revoke unused certificates immediately
-- Use OCSP stapling for certificate revocation checks
-- Separate root CA from issuing certificates
-- Store root CA private key offline
+* Use 4096-bit keys for production certificates
+* Set shorter validity periods (90 days max)
+* Revoke unused certificates immediately
+* Use OCSP stapling for certificate revocation checks
+* Separate root CA from issuing certificates
+* Store root CA private key offline
 
 > **Note**: Self-signed certificates are suitable for development and internal use only. Production environments should use certificates from trusted Certificate Authorities like Let's Encrypt or commercial providers.
 
+```
 ```
