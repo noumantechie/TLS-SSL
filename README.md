@@ -2,21 +2,31 @@
 
 This guide demonstrates how to create a self-signed Root Certificate Authority (CA) and use it to sign TLS/SSL certificates for Nginx. Ideal for development environments and internal infrastructure.
 
-## Understanding TLS/SSL Basicsse
+## Understanding TLS/SSL Basics
 
 ### 🔐 What is TLS/SSL?
 
-* Transport Layer Security (TLS) and its predecessor Secure Sockets Layer (SSL) are cryptographic protocols that provide secure communication over networks
-* Creates an encrypted channel between client (browser) and server (Nginx)
-* Uses asymmetric encryption with public/private key pairs
-* Verified through digital certificates signed by trusted authorities
+* TLS (Transport Layer Security) and SSL (Secure Sockets Layer) are cryptographic protocols used to secure communication over a network.
+* They establish an encrypted link between a client (like a browser) and a server (like Nginx), ensuring that all data remains private.
+* TLS/SSL uses asymmetric encryption, which involves a pair of keys: a public key and a private key.
+* Digital certificates help verify the server's identity and are signed by a trusted authority.
 
-### 📜 Key Concepts
+### 📜 Self-Signed Certificate
 
-* **Root Certificate Authority (CA)**: Trusted entity that issues digital certificates
-* **Certificate Signing Request (CSR)**: File containing server details for certificate generation
-* **SAN (Subject Alternative Name)**: Extends certificate validity to multiple domains/IPs
-* **Chain of Trust**: Root CA → Intermediate CA → Server Certificate
+A **self-signed certificate** is a digital certificate that is **signed by the same entity** whose identity it certifies.
+
+If you generate a public key and a private key, and then **sign the public key with your own private key**, you are effectively saying:
+
+> “I trust myself, and I vouch for my own identity.”
+
+In this case, there is no third-party Certificate Authority involved. Self-signed certificates are commonly used in **development**, **testing**, and **internal environments**, but are not recommended for production use.
+
+### 🧠 Key Concepts
+
+* **Root Certificate Authority (CA)**: A trusted entity that issues and signs digital certificates.
+* **Certificate Signing Request (CSR)**: A file generated on the server that contains the server details and is sent to a CA for signing.
+* **SAN (Subject Alternative Name)**: Allows a certificate to secure multiple domains or IP addresses.
+* **Chain of Trust**: A hierarchy where the Root CA signs an Intermediate CA, which then signs the server certificate.
 
 ## Prerequisites
 
@@ -26,36 +36,36 @@ This guide demonstrates how to create a self-signed Root Certificate Authority (
 * Windows machine for testing
 * Firewall access to ports 80/443
 
-## Self-Signed Certificate
-
-A self-signed certificate is a certificate that is **signed by the same entity whose identity it certifies**.
-
-> If I generate a **public key** and a **private key**, and then **sign the public key using my own private key**, I create a **self-signed certificate**. In other words, **I am issuing a certificate to myself**, saying:
->
-> “I trust myself, and I vouch for my own identity.”
-
 ## Step-by-Step Setup
 
 ### 1. Create Root Certificate Authority
 
 ```bash
-# Generate Root CA private key and certificate
-# This creates a new RSA private key and uses it to generate a self-signed certificate valid for 10 years
+# Generate a Root CA private key and self-signed certificate
+# -x509: Output a self-signed certificate instead of a certificate request
+# -sha256: Use SHA-256 hashing algorithm
+# -days 3650: Valid for 10 years
+# -nodes: Do not encrypt the private key
+# -newkey rsa:2048: Generate a new 2048-bit RSA key pair
+# -subj: Provide certificate details (Distinguished Name)
+# -keyout: Output file for the private key
+# -out: Output file for the certificate
 openssl req -x509 -sha256 -days 3650 -nodes -newkey rsa:2048 \
   -subj "/C=US/ST=California/L=San Francisco/O=ExampleOrg/OU=IT Department/CN=RootCA.devopsmadeeasy.in" \
   -keyout rootCA.key -out rootCA.crt
 
-# Install Root CA in system trust store
-# Copy the certificate to the trust store and update the system CA list
+# Copy the Root CA certificate to the trusted anchors directory
 sudo cp rootCA.crt /etc/pki/ca-trust/source/anchors/
+
+# Update the system's CA trust database so it includes the new Root CA
 sudo update-ca-trust extract
 ```
 
 ### 2. Generate Server Certificate
 
 ```bash
-# Create CSR configuration file
-# This file defines the subject details and SANs for the server certificate
+# Create a configuration file for the Certificate Signing Request (CSR)
+# Includes SANs and extended usages
 cat > csr.conf <<'EOF'
 [ req ]
 default_bits = 2048
@@ -89,16 +99,14 @@ extendedKeyUsage=serverAuth
 subjectAltName=@alt_names
 EOF
 
-# Generate private key
-# This is the private key for your Nginx server
+# Generate the server's private key
 openssl genrsa -out server.key 2048
 
-# Create Certificate Signing Request (CSR)
-# This generates a request file using the server key and config
+# Create the CSR using the private key and configuration file
 openssl req -new -key server.key -out server.csr -config csr.conf
 
-# Sign certificate with Root CA
-# Use your Root CA to sign the CSR and create the server certificate
+# Use the Root CA to sign the CSR and generate the server certificate
+# -CAcreateserial: Create a serial number file if it doesn't exist
 openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
   -CAcreateserial -out server.crt -days 3650 \
   -extensions v3_ext -extfile csr.conf
@@ -107,23 +115,21 @@ openssl x509 -req -in server.csr -CA rootCA.crt -CAkey rootCA.key \
 ### 3. Configure Nginx
 
 ```bash
-# Install Nginx
-# Install the web server if it's not already present
+# Install Nginx using yum package manager
 sudo yum install -y nginx
 
-# Create certificate directory
-# Create a directory to securely store private keys
+# Create a directory to store the private key securely
 sudo mkdir -p /etc/pki/nginx/private
 
-# Install certificates
-# Copy the generated certificates into Nginx directories and set correct permissions
+# Move the generated certificate and private key to Nginx directories
 sudo cp server.crt /etc/pki/nginx/
 sudo cp server.key /etc/pki/nginx/private/
+
+# Set permissions so only Nginx can read the private key
 sudo chmod 600 /etc/pki/nginx/private/server.key
 sudo chown nginx:nginx /etc/pki/nginx/private/server.key
 
-# Create Nginx SSL configuration
-# Define HTTPS server block to use TLS/SSL certificates
+# Create an SSL configuration file for Nginx
 sudo tee /etc/nginx/conf.d/ssl.conf > /dev/null <<'EOF'
 server {
     listen 443 ssl http2;
@@ -157,18 +163,17 @@ server {
 }
 EOF
 
-# Test configuration and restart Nginx
-# Ensure syntax is correct and reload server
+# Test the Nginx configuration for syntax errors
 sudo nginx -t
+
+# Restart Nginx to apply the new configuration
 sudo systemctl restart nginx
 
-# Install and enable firewalld
-# Make sure firewall service is running and enabled
+# Install and start the firewalld service
 yum install firewalld -y
 systemctl enable --now firewalld
 systemctl status firewalld
 
-# Configure firewall
 # Allow HTTP and HTTPS traffic through the firewall
 sudo firewall-cmd --permanent --add-service={http,https}
 sudo firewall-cmd --reload
@@ -176,7 +181,7 @@ sudo firewall-cmd --reload
 
 ### 4. Windows Client Configuration
 
-**Edit hosts file (**\`\`**)**:
+**Edit hosts file (`C:\Windows\System32\drivers\etc\hosts`)**:
 
 ```
 68.183.142.158 mynginx.com www.mynginx.com test.mynginx.com
@@ -184,9 +189,9 @@ sudo firewall-cmd --reload
 
 **Import Root CA**:
 
-* Copy `rootCA.crt` to Windows machine
+* Copy `rootCA.crt` to your Windows machine
 * Open `certlm.msc` (Local Machine Certificate Manager)
-* Import to "Trusted Root Certification Authorities"
+* Import the certificate into "Trusted Root Certification Authorities"
 
 **Flush DNS cache**:
 
@@ -199,58 +204,29 @@ ipconfig /flushdns
 ### Server-Side Checks
 
 ```bash
-# Verify certificate chain
-# Checks if server.crt is properly signed by the Root CA
+# Check if server certificate is trusted by the Root CA
 openssl verify -CAfile rootCA.crt server.crt
 
-# Check SAN configuration
-# Display the certificate fields and filter Subject Alternative Names
+# View SAN and other fields in the certificate
 openssl x509 -in server.crt -text -noout | grep "X509v3"
 
-# Test local HTTPS connection using curl
+# Test HTTPS connection with local name resolution
 curl -vk --resolve mynginx.com:443:127.0.0.1 https://mynginx.com
 
-# Validate SSL handshake and certificate verification using openssl
+# Inspect TLS handshake and certificate validation
 openssl s_client -connect localhost:443 -servername mynginx.com | grep "Verify"
 ```
 
-# Test local connection
+### Client-Side Verification
 
-curl -vk --resolve mynginx.com:443:127.0.0.1 [https://mynginx.com](https://mynginx.com)
-openssl s\_client -connect localhost:443 -servername mynginx.com | grep "Verify"
+* Access in browser: [https://mynginx.com](https://mynginx.com)
+* Check certificate details:
 
-````
+  * Should show "Issued by: RootCA.devopsmadeeasy.in"
+  * Secure padlock icon should appear
+  * All SANs should be listed under certificate details
 
-### 5. Client-Side Verification
-
-```bash
-# Add entries to hosts file (on Windows)
-# This ensures browser resolves domain to your Nginx server IP
-68.183.142.158 mynginx.com www.mynginx.com test.mynginx.com
-````
-
-```bash
-# Import Root CA Certificate on Windows
-# This allows the browser to trust the self-signed CA
-# - Copy rootCA.crt to Windows machine
-# - Open certlm.msc (Local Machine Certificate Manager)
-# - Import into "Trusted Root Certification Authorities"
-```
-
-```cmd
-# Flush DNS cache (Windows)
-ipconfig /flushdns
-```
-
-```text
-# Open in browser: https://mynginx.com
-# You should see:
-# - A secure padlock icon
-# - Certificate issued by: RootCA.devopsmadeeasy.in
-# - All configured Subject Alternative Names (SANs)
-```
-
-## 6. Troubleshooting
+## Troubleshooting
 
 | Symptom                            | Solution                                                  |
 | ---------------------------------- | --------------------------------------------------------- |
@@ -260,7 +236,7 @@ ipconfig /flushdns
 | Connection refused                 | Check firewall: `sudo firewall-cmd --list-all`            |
 | Certificate not trusted            | Ensure Root CA is in both system and browser trust stores |
 
-## 7. Security Best Practices
+## Security Best Practices
 
 * Use 4096-bit keys for production certificates
 * Set shorter validity periods (90 days max)
@@ -270,6 +246,3 @@ ipconfig /flushdns
 * Store root CA private key offline
 
 > **Note**: Self-signed certificates are suitable for development and internal use only. Production environments should use certificates from trusted Certificate Authorities like Let's Encrypt or commercial providers.
-
-```
-```
